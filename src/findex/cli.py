@@ -1,17 +1,20 @@
 import json
 import logging
+import math
+import multiprocessing as mp
+from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+from enum import Enum
 from pathlib import Path
+
 import typer
 from rich.console import Console
 from rich.logging import RichHandler
 from rich.table import Table
-from findex.index import Index, open_index, build_partial
+
+from findex.index import Index, build_partial, open_index
 from findex.ranking import BM25Scorer, TfIdfScorer
 from findex.search import SearchEngine, parse_query
-import math
-import multiprocessing as mp
-from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, as_completed
-from enum import Enum
+
 console = Console()
 err_console = Console(stderr=True)
 app = typer.Typer(add_completion=False, help="Findex: Full-text search engine CLI")
@@ -46,7 +49,7 @@ class ExecutorType(str, Enum):
 def build_index(
     data_dir: Path = typer.Argument(..., help="Шлях до корпусу текстів", exists=True, file_okay=False), # noqa: B008
     out: Path = typer.Option(..., "--out", help="Шлях для збереження index.pkl"), # noqa: B008
-    workers: int = typer.Option(1, "--workers", help="Кількість паралельних воркерів"), # noqa: B008
+    workers: int = typer.Option(1, "--workers", help="Кількість паралельних воркерів"),
     executor: ExecutorType = typer.Option(ExecutorType.serial, "--executor", help="Тип паралелізму") # noqa: B008
 ):
     
@@ -104,7 +107,7 @@ def search_index(
     index_file: Path = typer.Argument(..., help="Шлях до файлу index.pkl", exists=True, dir_okay=False),# noqa: B008
     query: str = typer.Argument(..., help="Пошуковий запит"),
     scorer: str = typer.Option("bm25", help="Алгоритм ранжування (bm25, tfidf)"),
-    json_out: bool = typer.Option(False, "--json", help="Вивести результати у форматі JSON в stdout")# noqa: B008
+    json_out: bool = typer.Option(False, "--json", help="Вивести результати у форматі JSON в stdout")
 ):
     """Виконує пошук по існуючому індексу."""
     logger = logging.getLogger("findex.search")

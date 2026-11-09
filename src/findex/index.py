@@ -1,11 +1,11 @@
 import pickle
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Generator, Iterator, Mapping
 from contextlib import contextmanager
 from functools import cached_property
 from pathlib import Path
-from collections import Counter
-from findex.models import Posting, DocMeta
+
+from findex.models import DocMeta, Posting
 
 
 def build_partial(paths: list[Path], start_doc_id: int) -> 'Index':
@@ -13,7 +13,7 @@ def build_partial(paths: list[Path], start_doc_id: int) -> 'Index':
     Функція рівня модуля для паралельної обробки.
     Кожен воркер отримує свій діапазон унікальних doc_id (start_doc_id).
     """
-    from findex.tokenize import tokenize # Локальний імпорт для уникнення циклів
+    from findex.tokenize import tokenize  # Локальний імпорт для уникнення циклів
     
     idx = Index()
     for i, path in enumerate(paths):

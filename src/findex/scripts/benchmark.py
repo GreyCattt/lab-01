@@ -1,18 +1,20 @@
-import sys
-import time
-import statistics
-import psutil
-import os
 import math
 import multiprocessing as mp
+import os
+import statistics
+import sys
+import time
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
+
 import matplotlib.pyplot as plt
+import psutil
 
 # Додаємо src до шляху, щоб Python знайшов модуль findex
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 
 from findex.index import Index, build_partial
+
 
 def get_memory_rss() -> float:
     """Повертає RSS пам'ять поточного (батьківського) процесу в МБ."""
@@ -82,8 +84,7 @@ def main() -> None:
     
     gil_status = "Увімкнено (Enabled)"
     if hasattr(sys, "_is_gil_enabled"):
-        check_gil = getattr(sys, "_is_gil_enabled")
-        gil_status = "Увімкнено" if check_gil() else "Вимкнено (Disabled - 3.13t)"
+        gil_status = "Увімкнено" if sys._is_gil_enabled() else "Вимкнено" # type: ignore
 
     print(f"Збірка індексу з {data_dir}")
     print(f"Статус GIL: {gil_status}")
