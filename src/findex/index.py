@@ -71,7 +71,7 @@ class Index(Mapping[str, list[Posting]]):
 
     def build(self, corpus_dir: Path) -> None:
         """Оновлений метод для зворотної сумісності (Лаба 4)."""
-        paths = list(corpus_dir.glob("**/*.txt"))
+        paths = sorted(corpus_dir.glob("**/*.txt"))
         if not paths:
             return
             

@@ -54,7 +54,7 @@ def build_index(
 ):
     
     console.print(f"Збираємо індекс з [cyan]{data_dir}[/cyan]...")
-    paths = list(data_dir.glob("**/*.txt"))
+    paths = sorted(data_dir.glob("**/*.txt"))
     if not paths:
         err_console.print("[red]Документи не знайдені![/red]")
         raise typer.Exit(code=1)
