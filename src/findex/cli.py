@@ -88,7 +88,7 @@ def build_index(
                 for future in as_completed(futures):
                     indices.append(future.result())
                     
-    except Exception as e:
+    except Exception as e: # type: ignore # noqa: BLE001 
         err_console.print(f"[red]Помилка у воркері під час збірки:[/red] {e}")
         raise typer.Exit(code=1)
 
