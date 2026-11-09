@@ -1,3 +1,4 @@
+from typing import Mapping, Iterator, Generator
 import argparse
 import pickle
 from pathlib import Path
@@ -10,25 +11,24 @@ from findex.tokenize import tokenize
 from findex.models import Posting, DocMeta
 from findex.utils import timed
 
-class Index(Mapping):
+class Index(Mapping[str, list[Posting]]):
     def __init__(self):
         self._postings: dict[str, list[Posting]] = defaultdict(list)
         self._metadata: dict[int, DocMeta] = {}
 
     def __getitem__(self, term: str) -> list[Posting]:
-        """Дозволяє отримувати постінги як index[term]. Якщо слова немає — пустий список."""
         return self._postings.get(term, [])
 
-    def __iter__(self):
-        """Дозволяє ітеруватися по термінах: for term in index."""
+    def __iter__(self) -> Iterator[str]:
         return iter(self._postings)
 
     def __len__(self) -> int:
-        """Повертає розмір словника (кількість унікальних термінів)."""
         return len(self._postings)
 
-    def __contains__(self, term: str) -> bool:
-        """Дозволяє використовувати оператор in: if 'cat' in index."""
+    # 2. Pyright каже, що __contains__ у Mapping має приймати object, а не str
+    def __contains__(self, term: object) -> bool:
+        if not isinstance(term, str):
+            return False
         return term in self._postings
 
     def __repr__(self) -> str:
@@ -71,7 +71,7 @@ class Index(Mapping):
             self._metadata[doc_id] = DocMeta(doc_id, len(tokens), str(file_path))
             
             # Збираємо позиції кожного токена
-            term_positions = defaultdict(list)
+            term_positions: dict[str, list[int]] = defaultdict(list)
             for pos, term in enumerate(tokens):
                 term_positions[term].append(pos)
                 
@@ -91,18 +91,13 @@ class Index(Mapping):
 
 
 @contextmanager
-def open_index(path: Path):
-    """
-    Контекстний менеджер для безпечного завантаження індексу.
-    Використання: with open_index("index.pkl") as index: ...
-    Гарантує, що файл буде закрито навіть якщо під час завантаження виникне помилка.
-    """
+def open_index(path: Path) -> Generator[Index, None, None]:
     f = path.open("rb")
     try:
         postings, metadata = pickle.load(f)
         idx = Index()
-        idx._postings = postings
-        idx._metadata = metadata
+        idx._postings = postings # type: ignore
+        idx._metadata = metadata # type: ignore
         yield idx
     finally:
         f.close()

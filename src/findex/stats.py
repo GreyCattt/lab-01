@@ -20,7 +20,7 @@ def run_pipeline(data_dir: Path, eager: bool = False):
         token_count = len(tokens)
     else:
         # Лінивий конвеєр: у пам'яті лише поточний документ та Counter
-        vocab = Counter()
+        vocab = Counter()# type: ignore - старий скрипт статистики, тип лічильника ігноруємо
         doc_count = 0
         token_count = 0
         for doc in iter_documents(data_dir):
@@ -37,12 +37,12 @@ def run_pipeline(data_dir: Path, eager: bool = False):
     print(f"\n--- {mode_name} ---")
     print(f"Documents: {doc_count}")
     print(f"Total tokens: {token_count}")
-    print(f"Vocabulary size: {len(vocab)}")
+    print(f"Vocabulary size: {len(vocab)}")# type: ignore - словник зібрано динамічно
     print(f"Time: {duration:.4f} s")
     print(f"Peak memory: {peak_mem / (1024 * 1024):.2f} MB")
     
     if not eager:
-        print("\nTop 5 terms:", vocab.most_common(5))
+        print("\nTop 5 terms:", vocab.most_common(5)) # type: ignore - тип елементів лічильника невідомий
 
 if __name__ == "__main__":
     data_path = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("data")

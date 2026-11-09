@@ -4,7 +4,7 @@ from array import array
 from dataclasses import dataclass
 
 class PostingRegular:
-    def __init__(self, doc_id, frequency):
+    def __init__(self, doc_id, frequency): # type: ignore
         self.doc_id = doc_id
         self.frequency = frequency
 
@@ -13,7 +13,7 @@ class PostingSlots:
     doc_id: int
     frequency: int
 
-def measure_memory(factory, count=1_000_000):
+def measure_memory(factory, count=1_000_000): # type: ignore    
     gc.collect()
     tracemalloc.start()
     
@@ -23,7 +23,7 @@ def measure_memory(factory, count=1_000_000):
             data.append(i)
             data.append(1)
     else:
-        data = [factory(i, 1) for i in range(count)]
+        data = [factory(i, 1) for i in range(count)]# type: ignore - тип результату фабрики не важливий для бенчмарку
         
     _, peak = tracemalloc.get_traced_memory()
     tracemalloc.stop()

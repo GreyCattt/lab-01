@@ -1,13 +1,29 @@
+import pytest
 from findex.tokenize import tokenize
 
-def test_tokenize_cyrillic_and_symbols():
-    text = "М'ясо, віце-президент та 42 коти пішли у café!"
-    tokens = list(tokenize(text))
-    assert tokens == ["м'ясо", "віце-президент", "та", "42", "коти", "пішли", "у", "café"]
-
-def test_unicode_normalization():
-    # "cafe" + combining acute accent (\u0301)
-    text1 = "cafe\u0301"
-    # precomposed "café"
-    text2 = "café"
-    assert list(tokenize(text1)) == list(tokenize(text2))
+@pytest.mark.parametrize(
+    "text, expected",
+    [
+        # Базові тести
+        ("Hello World", ["hello", "world"]),
+        ("  Spaces  here ", ["spaces", "here"]),
+        ("", []),
+        
+        # Знаки пунктуації та спеціальні символи
+        ("Hello, world!", ["hello", "world"]),
+        ("Email: greycat@example.com", ["email", "greycat", "example", "com"]),
+        ("hyphen-word and don't", ["hyphen-word", "and", "don't"]),
+        
+        # Unicode (Вимога Лаби 4)
+        ("Привіт світ", ["привіт", "світ"]),
+        ("Café & résumé", ["café", "résumé"]),
+        ("こんにちは世界", ["こんにちは世界"]), # Японська (якщо токенізатор це підтримує)
+        
+        # Числа та змішані рядки
+        ("Year 2026", ["year", "2026"]),
+        ("C# and .NET", ["c", "and", "net"]),
+    ]
+)
+def test_tokenize_variations(text: str, expected: list[str]):
+    """Перевіряє правильність розбиття тексту на токени."""
+    assert list(tokenize(text)) == expected

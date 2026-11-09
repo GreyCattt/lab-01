@@ -1,7 +1,6 @@
 import argparse
 import heapq
 import re
-import time
 from functools import lru_cache
 from pathlib import Path
 
@@ -50,6 +49,8 @@ def parse_query(query: str) -> QueryNode:
 
     def parse_primary() -> QueryNode:
         nonlocal pos
+        if pos >= len(tokens) or tokens[pos] in ('AND', 'OR', 'NOT', ')'):
+            raise ValueError(f"Неочікуваний токен: {tokens[pos] if pos < len(tokens) else 'кінець рядка'}")
         if match('('):
             node = parse_expr()
             match(')')
@@ -92,7 +93,7 @@ class SearchEngine:
         matched_docs = ast.evaluate(self.index)
         query_words = self.extract_raw_words(ast)
 
-        results = []
+        results: list[SearchResult] = []
         for doc_id in matched_docs:
             doc_len = self.index.get_meta(doc_id).length
             score = 0.0

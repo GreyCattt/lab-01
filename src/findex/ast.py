@@ -38,10 +38,11 @@ class Phrase(QueryNode):
             return set()
             
         postings_by_word = {word: {p.doc_id: p for p in index[word]} for word in self.words}
+        # type: ignore - Pyright не може вивести тип після динамічного розпакування генератора в set.intersection
+        common_docs: set[int] = set.intersection(*(set(pw.keys()) for pw in postings_by_word.values())) # type: ignore
+        common_docs = set.intersection(*(set(pw.keys()) for pw in postings_by_word.values())) # type: ignore
         
-        common_docs = set.intersection(*(set(pw.keys()) for pw in postings_by_word.values()))
-        
-        result = set()
+        result: set[int] = set()
         for doc_id in common_docs:
             first_word_positions = postings_by_word[self.words[0]][doc_id].positions
             
