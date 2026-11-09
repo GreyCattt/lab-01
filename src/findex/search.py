@@ -1,99 +1,162 @@
 import argparse
-import pickle
+import heapq
+import re
 import time
-import tracemalloc
+from functools import lru_cache
 from pathlib import Path
 
+from findex.index import open_index, Index
+from findex.ast import Term, Phrase, And, Or, Not, QueryNode
+from findex.ranking import BM25Scorer, TfIdfScorer, Scorer
+from findex.models import SearchResult
+from findex.utils import timed
 from findex.tokenize import tokenize
-from findex.models import Posting, DocMeta
 
-def search_set(postings_dict: dict, terms: list[str]) -> set[int]:
-    """Boolean AND пошук через перетин множин Python."""
-    if not terms:
-        return set()
-    
+def parse_query(query: str) -> QueryNode:
+    """
+    Парсить рядок запиту в AST-дерево.
+    Граматика:
+      Expr    -> Term (OR Term)*
+      Term    -> Factor (AND Factor)*
+      Factor  -> NOT Factor | Primary
+      Primary -> ( Expr ) | "phrase" | word
+    """
+    tokens = re.findall(r'\(|\)|AND|OR|NOT|"[^"]+"|[\w-]+', query)
+    pos = 0
 
-    if any(term not in postings_dict for term in terms):
-        return set()
+    def match(expected: str) -> bool:
+        nonlocal pos
+        if pos < len(tokens) and tokens[pos] == expected:
+            pos += 1
+            return True
+        return False
 
-    result = {p.doc_id for p in postings_dict[terms[0]]}
-    
-    for term in terms[1:]:
-        result &= {p.doc_id for p in postings_dict[term]}
-        
-    return result
+    def parse_expr() -> QueryNode:
+        node = parse_term()
+        while match('OR'):
+            node = Or(node, parse_term())
+        return node
 
-def search_merge(postings_dict: dict, terms: list[str]) -> list[int]:
-    """Boolean AND пошук через двовказівниковий merge відсортованих списків."""
-    if not terms:
-        return []
-        
-    if any(term not in postings_dict for term in terms):
-        return []
-    sorted_terms = sorted(terms, key=lambda t: len(postings_dict[t]))
-    result = [p.doc_id for p in postings_dict[sorted_terms[0]]]
-    
-    for term in sorted_terms[1:]:
-        next_list = [p.doc_id for p in postings_dict[term]]
-        merged = []
-        i, j = 0, 0
-        
-        while i < len(result) and j < len(next_list):
-            if result[i] == next_list[j]:
-                merged.append(result[i])
-                i += 1
-                j += 1
-            elif result[i] < next_list[j]:
-                i += 1
-            else:
-                j += 1
-                
-        result = merged
-        if not result:
-            break
+    def parse_term() -> QueryNode:
+        node = parse_factor()
+        while match('AND'):
+            node = And(node, parse_factor())
+        return node
+
+    def parse_factor() -> QueryNode:
+        if match('NOT'):
+            return Not(parse_factor())
+        return parse_primary()
+
+    def parse_primary() -> QueryNode:
+        nonlocal pos
+        if match('('):
+            node = parse_expr()
+            match(')')
+            return node
             
-    return result
+        token = tokens[pos]
+        pos += 1
+        
+        if token.startswith('"') and token.endswith('"'):
+            words = tuple(tokenize(token))
+            return Phrase(words)
+        else:
+            words = list(tokenize(token))
+            return Term(words[0]) if words else Term(token)
+
+    return parse_expr()
+
+
+class SearchEngine:
+    def __init__(self, index: Index, scorer: Scorer):
+        self.index = index
+        self.scorer = scorer
+
+    def extract_raw_words(self, node: QueryNode) -> set[str]:
+        """Рекурсивно витягує всі базові слова з AST для підсвітки та підрахунку балів."""
+        if isinstance(node, Term):
+            return {node.word}
+        elif isinstance(node, Phrase):
+            return set(node.words)
+        elif isinstance(node, (And, Or)):
+            return self.extract_raw_words(node.left) | self.extract_raw_words(node.right)
+        elif isinstance(node, Not):
+            return self.extract_raw_words(node.child)
+        return set()
+
+    @timed
+    @lru_cache(maxsize=128)
+    def search(self, query_str: str, top_k: int = 5) -> list[SearchResult]:
+        ast = parse_query(query_str)
+        matched_docs = ast.evaluate(self.index)
+        query_words = self.extract_raw_words(ast)
+
+        results = []
+        for doc_id in matched_docs:
+            doc_len = self.index.get_meta(doc_id).length
+            score = 0.0
+            
+            for word in query_words:
+                postings = self.index[word]
+                tf = next((p.frequency for p in postings if p.doc_id == doc_id), 0)
+                if tf > 0:
+                    df = self.index.df(word)
+                    score += self.scorer.score(tf, df, doc_len)
+            
+            results.append(SearchResult(doc_id, score))
+
+        return heapq.nlargest(top_k, results)
+
+    def generate_snippet(self, text: str, query_words: set[str], window: int = 80) -> str:
+        """Повертає вікно тексту навколо першого знайденого слова із запиту."""
+        lower_text = text.casefold()
+        best_idx = -1
+        
+        for word in query_words:
+            idx = lower_text.find(word)
+            if idx != -1 and (best_idx == -1 or idx < best_idx):
+                best_idx = idx
+                
+        if best_idx == -1:
+            return text[:window*2] + "..."
+            
+        start = max(0, best_idx - window)
+        end = min(len(text), best_idx + window)
+        snippet = text[start:end]
+        
+        for word in query_words:
+            pattern = re.compile(re.escape(word), re.IGNORECASE)
+            snippet = pattern.sub(lambda m: f"\033[93m\033[1m{m.group(0)}\033[0m", snippet)
+            
+        return f"... {snippet} ..."
+
 
 def main():
-    parser = argparse.ArgumentParser(description="Search in Inverted Index")
+    parser = argparse.ArgumentParser(description="Advanced Search Engine")
     parser.add_argument("index_file", type=Path, help="Path to index.pkl")
-    parser.add_argument("query", type=str, help="Search query (terms will be ANDed)")
-    parser.add_argument("--engine", choices=["merge", "set"], default="merge", help="Search algorithm")
+    parser.add_argument("query", type=str, help="Search query (e.g. 'tarot AND club')")
+    parser.add_argument("--scorer", choices=["bm25", "tfidf"], default="bm25", help="Ranking algorithm")
     args = parser.parse_args()
 
-    tracemalloc.start()
-    start_load = time.perf_counter()
+    with open_index(args.index_file) as index:
+        scorer = BM25Scorer(index) if args.scorer == "bm25" else TfIdfScorer(index)
+        engine = SearchEngine(index, scorer)
 
-    # Завантажуємо індекс
-    with args.index_file.open("rb") as f:
-        postings_dict, metadata = pickle.load(f)
+        print(f"\n--- Query: {args.query} | Scorer: {args.scorer.upper()} ---")
+        
+        top_results = engine.search(args.query)
+        engine.search(args.query)
 
-    load_time = time.perf_counter() - start_load
+        query_words = engine.extract_raw_words(parse_query(args.query))
 
-    # Токенізуємо запит
-    query_terms = list(tokenize(args.query))
-    
-    start_search = time.perf_counter()
-    
-    if args.engine == "set":
-        result_doc_ids = search_set(postings_dict, query_terms)
-    else:
-        result_doc_ids = search_merge(postings_dict, query_terms)
-
-    search_time = time.perf_counter() - start_search
-    _, peak_mem = tracemalloc.get_traced_memory()
-    tracemalloc.stop()
-
-    print(f"Query terms: {query_terms}")
-    print(f"Engine: {args.engine.upper()}")
-    print(f"Found matches: {len(result_doc_ids)}")
-    print(f"\nTime to load index: {load_time:.4f} s")
-    print(f"Time to search: {search_time:.6f} s")
-    print(f"Peak memory (load + search): {peak_mem / (1024 * 1024):.2f} MB")
-    
-    print("\nFirst 5 matching documents:")
-    for doc_id in list(result_doc_ids)[:5]:
-        print(f"- {metadata[doc_id].path}")
+        for rank, res in enumerate(top_results, 1):
+            meta = index.get_meta(res.doc_id)
+            text = Path(meta.path).read_text(encoding="utf-8")
+            snippet = engine.generate_snippet(text, query_words)
+            
+            print(f"\n{rank}. {meta.path} (Score: {res.score:.4f})")
+            print(snippet)
 
 if __name__ == "__main__":
     main()
