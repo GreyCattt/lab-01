@@ -1,7 +1,8 @@
-import tracemalloc
 import gc
+import tracemalloc
 from array import array
 from dataclasses import dataclass
+
 
 class PostingRegular:
     def __init__(self, doc_id, frequency): # type: ignore

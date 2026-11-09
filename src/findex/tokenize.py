@@ -1,5 +1,6 @@
 import re
-from typing import Iterator
+from collections.abc import Iterator
+
 
 def tokenize(text: str) -> Iterator[str]:
     """Розбиває текст на токени (слова) у нижньому регістрі."""

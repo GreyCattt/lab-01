@@ -1,6 +1,8 @@
 import math
 from typing import Protocol
+
 from findex.index import Index
+
 
 class Scorer(Protocol):
     """

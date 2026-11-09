@@ -1,11 +1,12 @@
-import tracemalloc
-import time
 import sys
-from pathlib import Path
+import time
+import tracemalloc
 from collections import Counter
+from pathlib import Path
 
 from findex.corpus import iter_documents
 from findex.tokenize import tokenize
+
 
 def run_pipeline(data_dir: Path, eager: bool = False):
     tracemalloc.start()

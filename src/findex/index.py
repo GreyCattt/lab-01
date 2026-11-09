@@ -1,15 +1,15 @@
-from typing import Mapping, Iterator, Generator
 import argparse
 import pickle
-from pathlib import Path
 from collections import defaultdict
-from collections.abc import Mapping
-from functools import cached_property
+from collections.abc import Generator, Iterator, Mapping
 from contextlib import contextmanager
+from functools import cached_property
+from pathlib import Path
 
+from findex.models import DocMeta, Posting
 from findex.tokenize import tokenize
-from findex.models import Posting, DocMeta
 from findex.utils import timed
+
 
 class Index(Mapping[str, list[Posting]]):
     def __init__(self):

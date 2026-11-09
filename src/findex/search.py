@@ -4,12 +4,13 @@ import re
 from functools import lru_cache
 from pathlib import Path
 
-from findex.index import open_index, Index
-from findex.ast import Term, Phrase, And, Or, Not, QueryNode
-from findex.ranking import BM25Scorer, TfIdfScorer, Scorer
+from findex.ast import And, Not, Or, Phrase, QueryNode, Term
+from findex.index import Index, open_index
 from findex.models import SearchResult
-from findex.utils import timed
+from findex.ranking import BM25Scorer, Scorer, TfIdfScorer
 from findex.tokenize import tokenize
+from findex.utils import timed
+
 
 def parse_query(query: str) -> QueryNode:
     """
@@ -87,7 +88,7 @@ class SearchEngine:
         return set()
 
     @timed
-    @lru_cache(maxsize=128)
+    @lru_cache(maxsize=128) # noqa: B019
     def search(self, query_str: str, top_k: int = 5) -> list[SearchResult]:
         ast = parse_query(query_str)
         matched_docs = ast.evaluate(self.index)

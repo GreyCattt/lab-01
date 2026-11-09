@@ -1,5 +1,6 @@
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
+
 
 def iter_documents(directory: Path) -> Iterator[str]:
     """Ліниво читає всі .txt файли у директорії, не завантажуючи їх одночасно в пам'ять."""

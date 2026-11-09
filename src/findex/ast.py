@@ -1,6 +1,8 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
+
 from findex.index import Index
+
 
 class QueryNode(ABC):
     """Базовий клас для всіх вузлів синтаксичного дерева запиту."""
@@ -8,7 +10,6 @@ class QueryNode(ABC):
     @abstractmethod
     def evaluate(self, index: Index) -> set[int]:
         """Оцінює вузол відносно індексу і повертає множину doc_id."""
-        pass
     def __and__(self, other: 'QueryNode') -> 'QueryNode':
         return And(self, other)
 

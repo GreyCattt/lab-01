@@ -1,7 +1,8 @@
 import sys
 import time
+from collections.abc import Callable
 from functools import wraps
-from typing import Callable, TypeVar, ParamSpec
+from typing import ParamSpec, TypeVar
 
 P = ParamSpec('P')
 R = TypeVar('R')

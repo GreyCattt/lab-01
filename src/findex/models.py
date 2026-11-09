@@ -1,6 +1,8 @@
 from dataclasses import dataclass, field
 from functools import total_ordering
 from typing import Any
+
+
 @dataclass(frozen=True, slots=True)
 class Posting:
     doc_id: int
@@ -19,7 +21,7 @@ class SearchResult:
     doc_id: int
     score: float
     
-    def __eq__(self, other: Any) -> bool:
+    def __eq__(self, other: object) -> bool:
         if not isinstance(other, SearchResult):
             return NotImplemented
         return self.score == other.score

@@ -5,13 +5,13 @@ from pathlib import Path
 import typer
 from rich.console import Console
 from rich.logging import RichHandler
-from rich.table import Table
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.table import Table
 
 # Імпортуємо нашу логіку
 from findex.index import Index, open_index
-from findex.search import SearchEngine, parse_query
 from findex.ranking import BM25Scorer, TfIdfScorer
+from findex.search import SearchEngine, parse_query
 
 # Всі діагностичні логи та помилки йдуть у stderr, щоб не ламати stdout (--json)
 err_console = Console(stderr=True)
@@ -40,8 +40,8 @@ def main_callback(
 
 @app.command("index")
 def build_index(
-    data_dir: Path = typer.Argument(..., help="Шлях до корпусу текстів", exists=True, file_okay=False),
-    out: Path = typer.Option(..., "--out", help="Шлях для збереження index.pkl")
+    data_dir: Path = typer.Argument(..., help="Шлях до корпусу текстів", exists=True, file_okay=False), # noqa: B008
+    out: Path = typer.Option(..., "--out", help="Шлях для збереження index.pkl")# noqa: B008
 ):
     """Будує інвертований індекс із вказаної директорії."""
     logger = logging.getLogger("findex.index")
@@ -55,7 +55,7 @@ def build_index(
         TextColumn("[progress.description]{task.description}"),
         console=err_console
     ) as progress:
-        task = progress.add_task(f"Індексація файлів...", total=None)
+        task = progress.add_task("Індексація файлів...", total=None)
         idx.build(data_dir)
         progress.update(task, description="[green]Індексацію завершено![/green]")
 
@@ -66,7 +66,7 @@ def build_index(
 
 @app.command("search")
 def search_index(
-    index_file: Path = typer.Argument(..., help="Шлях до файлу index.pkl", exists=True, dir_okay=False),
+    index_file: Path = typer.Argument(..., help="Шлях до файлу index.pkl", exists=True, dir_okay=False),# noqa: B008
     query: str = typer.Argument(..., help="Пошуковий запит"),
     scorer: str = typer.Option("bm25", help="Алгоритм ранжування (bm25, tfidf)"),
     json_out: bool = typer.Option(False, "--json", help="Вивести результати у форматі JSON в stdout")
@@ -77,8 +77,8 @@ def search_index(
     # Вимога лаби: Очікувана помилка - один зрозумілий рядок, код виходу 1
     try:
         ast = parse_query(query)
-    except Exception as e:
-        err_console.print("[red]Помилка:[/red] Зламаний синтаксис запиту. Перевірте дужки та оператори.")
+    except ValueError:
+        err_console.print("[red]Помилка:[/red] Зламаний синтаксис запиту.")
         raise typer.Exit(code=1)
 
     logger.debug(f"AST Дерево: {ast}")
@@ -115,13 +115,13 @@ def search_index(
 
                 Console().print(table)
                 
-    except Exception as e:
+    except Exception as e: # noqa: BLE001
         err_console.print(f"[red]Помилка завантаження індексу:[/red] {e}")
         raise typer.Exit(code=1)
 
 
 @app.command("stats")
-def index_stats(index_file: Path = typer.Argument(..., help="Шлях до файлу index.pkl", exists=True)):
+def index_stats(index_file: Path = typer.Argument(..., help="Шлях до файлу index.pkl", exists=True)): # noqa: B008
     """Виводить статистику побудованого індексу."""
     with open_index(index_file) as index:
         Console().print(f"[bold cyan]Статистика індексу {index_file}:[/bold cyan]")
