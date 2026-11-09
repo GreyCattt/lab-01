@@ -1,15 +1,37 @@
-import argparse
 import pickle
 from collections import defaultdict
 from collections.abc import Generator, Iterator, Mapping
 from contextlib import contextmanager
 from functools import cached_property
 from pathlib import Path
+from collections import Counter
+from findex.models import Posting, DocMeta
 
-from findex.models import DocMeta, Posting
-from findex.tokenize import tokenize
-from findex.utils import timed
 
+def build_partial(paths: list[Path], start_doc_id: int) -> 'Index':
+    """
+    Функція рівня модуля для паралельної обробки.
+    Кожен воркер отримує свій діапазон унікальних doc_id (start_doc_id).
+    """
+    from findex.tokenize import tokenize # Локальний імпорт для уникнення циклів
+    
+    idx = Index()
+    for i, path in enumerate(paths):
+        doc_id = start_doc_id + i
+        text = path.read_text(encoding="utf-8", errors="ignore")
+        tokens = list(tokenize(text))
+        
+        # type: ignore - прямий доступ до внутрішнього стану для максимальної швидкості воркера
+        idx._metadata[doc_id] = DocMeta(doc_id=doc_id, path=str(path), length=len(tokens)) # type: ignore
+        term_freqs = Counter(tokens)
+        for term, freq in term_freqs.items():
+            positions = tuple(pos for pos, t in enumerate(tokens) if t == term)
+            # type: ignore - прямий доступ до внутрішнього стану для максимальної швидкості воркера
+            idx._postings[term].append( # type: ignore
+                Posting(doc_id=doc_id, frequency=freq, positions=positions)
+            )
+            
+    return idx
 
 class Index(Mapping[str, list[Posting]]):
     def __init__(self):
@@ -35,6 +57,32 @@ class Index(Mapping[str, list[Posting]]):
         """Зручне відображення об'єкта в консолі/дебагері."""
         return f"<Index: {len(self)} terms, {self.num_docs} docs, avg_len: {self.avg_doc_length:.1f}>"
 
+    def merge(self, other: "Index") -> None: 
+        """Зливає інший індекс у поточний."""
+        # type: ignore - доступ до protected полів іншого екземпляра Index для злиття
+        self._metadata.update(other._metadata) # type: ignore
+
+        # type: ignore - доступ до protected полів іншого екземпляра Index для злиття
+        for term, postings in other._postings.items():# type: ignore
+            self._postings[term].extend(postings)
+            # Оскільки воркери можуть завершуватися не по порядку, 
+            # гарантуємо сортування постінгів для бінарного пошуку/перетину
+            self._postings[term].sort(key=lambda p: p.doc_id)
+
+    def build(self, corpus_dir: Path) -> None:
+        """Оновлений метод для зворотної сумісності (Лаба 4)."""
+        paths = list(corpus_dir.glob("**/*.txt"))
+        if not paths:
+            return
+            
+        partial = build_partial(paths, 0)
+        self.merge(partial)
+        
+    def save(self, path: Path) -> None:
+        """Зберігає індекс на диск за допомогою pickle."""
+        with path.open("wb") as f:
+            pickle.dump((self._postings, self._metadata), f)
+
     @property
     def num_docs(self) -> int:
         """Кількість документів у корпусі."""
@@ -58,36 +106,6 @@ class Index(Mapping[str, list[Posting]]):
     def get_meta(self, doc_id: int) -> DocMeta:
         return self._metadata[doc_id]
 
-    @timed
-    def build(self, data_dir: Path):
-        """Будує індекс, збираючи частоти та позиції токенів."""
-        doc_id = 0
-        for file_path in data_dir.rglob("*.txt"):
-            if not file_path.is_file():
-                continue
-            
-            text = file_path.read_text(encoding="utf-8")
-            tokens = list(tokenize(text))
-            self._metadata[doc_id] = DocMeta(doc_id, len(tokens), str(file_path))
-            
-            # Збираємо позиції кожного токена
-            term_positions: dict[str, list[int]] = defaultdict(list)
-            for pos, term in enumerate(tokens):
-                term_positions[term].append(pos)
-                
-            # Створюємо постінги з кортежами позицій
-            for term, positions in term_positions.items():
-                self._postings[term].append(
-                    Posting(doc_id, len(positions), tuple(positions))
-                )
-                
-            doc_id += 1
-
-    @timed
-    def save(self, out_path: Path):
-        """Зберігає індекс на диск."""
-        with out_path.open("wb") as f:
-            pickle.dump((dict(self._postings), self._metadata), f)
 
 
 @contextmanager
@@ -103,15 +121,3 @@ def open_index(path: Path) -> Generator[Index, None, None]:
         f.close()
 
 
-def main():
-    parser = argparse.ArgumentParser(description="Build and Save Index")
-    parser.add_argument("data_dir", type=Path, help="Corpus directory")
-    parser.add_argument("--out", type=Path, required=True, help="Output index file")
-    args = parser.parse_args()
-
-    idx = Index()
-    idx.build(args.data_dir)
-    idx.save(args.out)
-
-if __name__ == "__main__":
-    main()

@@ -21,7 +21,7 @@ def test_cli_index_build(tmp_path: Path):
     result = runner.invoke(app, ["index", str(data_dir), "--out", str(out_file)])
     assert result.exit_code == 0
     assert out_file.exists()
-    assert "Індекс збережено" in result.stderr
+    assert "успішно" in result.stdout
 
 def test_cli_search_json(tmp_path: Path):
     """Перевіряє команду 'search' з прапорцем --json."""
