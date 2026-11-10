@@ -2,6 +2,8 @@ import json
 import logging
 import math
 import multiprocessing as mp
+import asyncio
+import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from enum import Enum
 from pathlib import Path
@@ -10,14 +12,17 @@ import typer
 from rich.console import Console
 from rich.logging import RichHandler
 from rich.table import Table
+from rich.live import Live
 
 from findex.index import Index, build_partial, open_index
 from findex.ranking import BM25Scorer, TfIdfScorer
 from findex.search import SearchEngine, parse_query
+from findex.crawler import crawl
 
 console = Console()
 err_console = Console(stderr=True)
 app = typer.Typer(add_completion=False, help="Findex: Full-text search engine CLI")
+
 
 def setup_logging(verbose_count: int):
     if verbose_count == 0:
@@ -79,10 +84,10 @@ def build_index(
             with ThreadPoolExecutor(max_workers=workers) as pool:
                 futures = [pool.submit(build_partial, chunk, s_id) for chunk, s_id in chunks]
                 for future in as_completed(futures):
-                    indices.append(future.result()) # Якщо воркер впав, помилка вилетить тут
+                    indices.append(future.result()) 
                     
         elif executor == ExecutorType.processes:
-            ctx = mp.get_context("spawn") # Безпечний запуск процесів
+            ctx = mp.get_context("spawn") 
             with ProcessPoolExecutor(max_workers=workers, mp_context=ctx) as pool:
                 futures = [pool.submit(build_partial, chunk, s_id) for chunk, s_id in chunks]
                 for future in as_completed(futures):
@@ -112,7 +117,6 @@ def search_index(
     """Виконує пошук по існуючому індексу."""
     logger = logging.getLogger("findex.search")
     
-    # Вимога лаби: Очікувана помилка - один зрозумілий рядок, код виходу 1
     try:
         ast = parse_query(query)
     except ValueError:
@@ -131,14 +135,12 @@ def search_index(
             query_words = engine.extract_raw_words(ast)
 
             if json_out:
-                # Вивід JSON суворо в stdout (sys.stdout)
                 output_data = [
                     {"path": str(index.get_meta(res.doc_id).path), "score": round(res.score, 4)} 
                     for res in results
                 ]
                 print(json.dumps(output_data, indent=2))
             else:
-                # Малюємо красиву таблицю rich для людини
                 table = Table(title=f"Результати пошуку: {query}", show_lines=True)
                 table.add_column("Rank", justify="right", style="cyan", no_wrap=True)
                 table.add_column("Score", justify="right", style="magenta")
@@ -166,6 +168,42 @@ def index_stats(index_file: Path = typer.Argument(..., help="Шлях до фа�
         Console().print(f"Документів: [green]{index.num_docs}[/green]")
         Console().print(f"Унікальних термінів: [green]{len(index)}[/green]")
         Console().print(f"Середня довжина документа: [green]{index.avg_doc_length:.1f} слів[/green]")
+
+
+async def run_crawler(start_urls: list[str], max_pages: int, concurrency: int) -> None:
+    stats: dict[str, int] = {"pending_requests": 0, "errors": 0, "queue_depth": 0}
+    start_time = time.monotonic()
+    collected = 0
+    
+    with open("documents.jsonl", "w", encoding="utf-8") as f:
+        with Live(refresh_per_second=4) as live:
+            async for doc in crawl(start_urls, max_pages, concurrency, stats):
+                f.write(json.dumps(doc, ensure_ascii=False) + "\n")
+                collected += 1
+                
+                elapsed = time.monotonic() - start_time
+                pages_per_sec = collected / elapsed if elapsed > 0 else 0
+                
+                table = Table(title="Findex Crawler Status")
+                table.add_column("Метрика", style="cyan")
+                table.add_column("Значення", style="magenta")
+                table.add_row("Зібрано сторінок", str(collected))
+                table.add_row("Швидкість (стор/сек)", f"{pages_per_sec:.2f}")
+                table.add_row("Запитів в очікуванні", str(stats["pending_requests"]))
+                table.add_row("Помилок", str(stats["errors"]))
+                table.add_row("Глибина черги", str(stats["queue_depth"]))
+                
+                live.update(table)
+
+@app.command("crawl")
+def crawl_cmd(
+    url: str = typer.Argument(..., help="Start URL"),
+    max_pages: int = typer.Option(200, "--max-pages", help="Максимальна кількість сторінок"),
+    concurrency: int = typer.Option(20, "--concurrency", help="Кількість одночасних запитів")
+):
+    """Асинхронний краулер для збору документів"""
+    asyncio.run(run_crawler([url], max_pages, concurrency))
+
 
 if __name__ == "__main__":
     app()

@@ -4,9 +4,17 @@ from collections.abc import Generator, Iterator, Mapping
 from contextlib import contextmanager
 from functools import cached_property
 from pathlib import Path
+import json
 
 from findex.models import DocMeta, Posting
 
+def iter_documents(jsonl_path: str):
+    """Генератор, який читає JSONL файл і повертає документи для індексації."""
+    with open(jsonl_path, "r", encoding="utf-8") as f:
+        for line in f:
+            doc = json.loads(line.strip())
+            # Повертаєш ідентифікатор (URL) та текст для побудови інвертованого індексу
+            yield doc["url"], doc["text"]
 
 def build_partial(paths: list[Path], start_doc_id: int) -> 'Index':
     """

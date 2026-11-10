@@ -13,6 +13,8 @@ dependencies = [
     "rich>=13.7.0",
     "psutil>=7.2.2",
     "matplotlib>=3.10.9",
+    "httpx>=0.28.1",
+    "beautifulsoup4>=4.15.0",
 ]
 
 [project.scripts]
@@ -25,6 +27,8 @@ dev = [
     "hypothesis>=6.100.0",
     "pyright>=1.1.350",
     "ruff>=0.3.0",
+    "types-beautifulsoup4>=4.12.0.20250516",
+    "pytest-asyncio>=1.4.1.post1",
 ]
 
 [tool.pyright]
