@@ -186,9 +186,10 @@ def _snippet(engine: SearchEngine, index: Index, doc_id: int, query_words: set[s
             p = postings[idx]
             sample_pos = ", ".join(str(pos) for pos in p.positions[:5])
             parts.append(f"{word} (×{p.frequency}, поз. {sample_pos})")
+    doc_name = Path(meta.path.replace("\\", "/")).name
     if parts:
-        return f"... Знайдено у {Path(meta.path.replace('\\', '/')).name}: " + "; ".join(parts) + " ..."
-    return f"... Документ {Path(meta.path.replace('\\', '/')).name} ({meta.length} слів) ..."
+        return f"... Знайдено у {doc_name}: " + "; ".join(parts) + " ..."
+    return f"... Документ {doc_name} ({meta.length} слів) ..."
 
 
 def _search(
