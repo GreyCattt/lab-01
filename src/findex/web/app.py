@@ -6,6 +6,7 @@ import os
 import re
 import time
 import uuid
+from bisect import bisect_left
 from collections.abc import AsyncGenerator, Awaitable, Callable, Iterable
 from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
@@ -138,24 +139,56 @@ def _resolve_document_path(raw_path: str) -> tuple[str, Path]:
     return normalized, candidate
 
 
+def _reconstruct_document_from_index(index: Index, doc_id: int, length: int) -> str:
+    """Reconstruct document text from positional postings when raw .txt is not deployed."""
+    tokens = [""] * max(length, 1)
+    for term in index:
+        postings = index[term]
+        idx = bisect_left(postings, doc_id, key=lambda p: p.doc_id)
+        if idx < len(postings) and postings[idx].doc_id == doc_id:
+            for pos in postings[idx].positions:
+                if 0 <= pos < len(tokens):
+                    tokens[pos] = term
+    return " ".join(t for t in tokens if t)
+
+
 def _read_document(index: Index, doc_id: int) -> tuple[str, str]:
     try:
         meta = index.get_meta(doc_id)
     except KeyError as exc:
         raise HTTPException(status_code=404, detail="Document not found") from exc
     display_path, resolved_path = _resolve_document_path(meta.path)
-    try:
-        content = resolved_path.read_text(encoding="utf-8")
-    except OSError as exc:
-        logger.exception("Could not read document %s at %s", doc_id, resolved_path)
-        raise HTTPException(status_code=404, detail="Document not found") from exc
+    if resolved_path.is_file():
+        try:
+            content = resolved_path.read_text(encoding="utf-8")
+            return display_path, content
+        except OSError:
+            pass
+    content = _reconstruct_document_from_index(index, doc_id, meta.length)
     return display_path, content
 
 
 def _snippet(engine: SearchEngine, index: Index, doc_id: int, query_words: set[str]) -> str:
-    _, content = _read_document(index, doc_id)
-    raw_snippet = engine.generate_snippet(content, query_words)
-    return ANSI_ESCAPE_RE.sub("", raw_snippet)
+    meta = index.get_meta(doc_id)
+    _, resolved_path = _resolve_document_path(meta.path)
+    if resolved_path.is_file():
+        try:
+            content = resolved_path.read_text(encoding="utf-8")
+            raw_snippet = engine.generate_snippet(content, query_words)
+            return ANSI_ESCAPE_RE.sub("", raw_snippet)
+        except OSError:
+            pass
+    parts: list[str] = []
+    for word in sorted(query_words):
+        postings = index[word]
+        idx = bisect_left(postings, doc_id, key=lambda p: p.doc_id)
+        if idx < len(postings) and postings[idx].doc_id == doc_id:
+            p = postings[idx]
+            sample_pos = ", ".join(str(pos) for pos in p.positions[:5])
+            parts.append(f"{word} (×{p.frequency}, поз. {sample_pos})")
+    if parts:
+        return f"... Знайдено у {Path(meta.path.replace('\\', '/')).name}: " + "; ".join(parts) + " ..."
+    return f"... Документ {Path(meta.path.replace('\\', '/')).name} ({meta.length} слів) ..."
 
 
 def _search(

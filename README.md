@@ -1,6 +1,6 @@
 # Findex — Lab 7: Пошук у вебі (FastAPI, Pydantic, Docker)
 
-**Публічна адреса:** `https://findex-lab-07.onrender.com` *(конфігурація деплою — у [render.yaml](render.yaml) та [Dockerfile](Dockerfile))*
+**Публічна адреса:** [https://lab-01-x6t1.onrender.com](https://lab-01-x6t1.onrender.com) *(OpenAPI документація: [https://lab-01-x6t1.onrender.com/docs](https://lab-01-x6t1.onrender.com/docs))*
 
 HTTP API та вебінтерфейс побудовані на базі FastAPI (`src/findex/web/app.py`) і запускаються через єдиний CLI:
 
