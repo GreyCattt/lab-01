@@ -1,8 +1,8 @@
+import asyncio
 import json
 import logging
 import math
 import multiprocessing as mp
-import asyncio
 import time
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
 from enum import Enum
@@ -10,14 +10,14 @@ from pathlib import Path
 
 import typer
 from rich.console import Console
+from rich.live import Live
 from rich.logging import RichHandler
 from rich.table import Table
-from rich.live import Live
 
+from findex.crawler import crawl
 from findex.index import Index, build_partial, open_index
 from findex.ranking import BM25Scorer, TfIdfScorer
 from findex.search import SearchEngine, parse_query
-from findex.crawler import crawl
 
 console = Console()
 err_console = Console(stderr=True)
@@ -175,25 +175,27 @@ async def run_crawler(start_urls: list[str], max_pages: int, concurrency: int) -
     start_time = time.monotonic()
     collected = 0
     
-    with open("documents.jsonl", "w", encoding="utf-8") as f:
-        with Live(refresh_per_second=4) as live:
-            async for doc in crawl(start_urls, max_pages, concurrency, stats):
-                f.write(json.dumps(doc, ensure_ascii=False) + "\n")
-                collected += 1
-                
-                elapsed = time.monotonic() - start_time
-                pages_per_sec = collected / elapsed if elapsed > 0 else 0
-                
-                table = Table(title="Findex Crawler Status")
-                table.add_column("Метрика", style="cyan")
-                table.add_column("Значення", style="magenta")
-                table.add_row("Зібрано сторінок", str(collected))
-                table.add_row("Швидкість (стор/сек)", f"{pages_per_sec:.2f}")
-                table.add_row("Запитів в очікуванні", str(stats["pending_requests"]))
-                table.add_row("Помилок", str(stats["errors"]))
-                table.add_row("Глибина черги", str(stats["queue_depth"]))
-                
-                live.update(table)
+    with (
+        open("documents.jsonl", "w", encoding="utf-8") as f,  # noqa: ASYNC230
+        Live(refresh_per_second=4) as live,
+    ):
+        async for doc in crawl(start_urls, max_pages, concurrency, stats):
+            f.write(json.dumps(doc, ensure_ascii=False) + "\n")
+            collected += 1
+
+            elapsed = time.monotonic() - start_time
+            pages_per_sec = collected / elapsed if elapsed > 0 else 0
+
+            table = Table(title="Findex Crawler Status")
+            table.add_column("Метрика", style="cyan")
+            table.add_column("Значення", style="magenta")
+            table.add_row("Зібрано сторінок", str(collected))
+            table.add_row("Швидкість (стор/сек)", f"{pages_per_sec:.2f}")
+            table.add_row("Запитів в очікуванні", str(stats["pending_requests"]))
+            table.add_row("Помилок", str(stats["errors"]))
+            table.add_row("Глибина черги", str(stats["queue_depth"]))
+
+            live.update(table)
 
 @app.command("crawl")
 def crawl_cmd(
@@ -203,6 +205,21 @@ def crawl_cmd(
 ):
     """Асинхронний краулер для збору документів"""
     asyncio.run(run_crawler([url], max_pages, concurrency))
+
+
+@app.command("serve")
+def serve_cmd(
+    port: int = typer.Option(
+        8000, "--port", envvar="PORT", min=1, max=65535, help="Порт HTTP-сервера"
+    ),
+    workers: int = typer.Option(
+        1, "--workers", envvar="WEB_CONCURRENCY", min=1, help="Кількість процесів uvicorn"
+    ),
+):
+    """Запускає HTTP API та вебінтерфейс."""
+    import uvicorn
+
+    uvicorn.run("findex.web.app:app", host="0.0.0.0", port=port, workers=workers)
 
 
 if __name__ == "__main__":

@@ -1,12 +1,14 @@
-import urllib.parse
 import asyncio
-import httpx
+import logging
 import random
 import time
-import logging
-from typing import Any, AsyncGenerator
-from bs4 import BeautifulSoup
+import urllib.parse
+from collections.abc import AsyncGenerator
+from typing import Any
 from urllib.robotparser import RobotFileParser
+
+import httpx
+from bs4 import BeautifulSoup
 
 logging.basicConfig(
     filename='crawl.log',
@@ -14,6 +16,7 @@ logging.basicConfig(
     format='[%(asctime)s] %(message)s',
     datefmt='%Y-%m-%d %H:%M:%S'
 )
+logger = logging.getLogger("findex.crawler")
 
 def canonicalize_url(url: str) -> str:
     parsed = urllib.parse.urlparse(url)
@@ -73,12 +76,12 @@ async def fetch(client: httpx.AsyncClient, url: str, stats: dict[str, int]) -> d
                     retry_after = response.headers.get("Retry-After")
                     delay = int(retry_after) if retry_after and retry_after.isdigit() else (base_delay * (2 ** attempt) + random.uniform(0, 1))
                     
-                    logging.warning(f"URL: {url} | STATUS: {response.status_code} | RETRY: {attempt+1} | DELAY: {delay:.2f}s")
+                    logger.warning(f"URL: {url} | STATUS: {response.status_code} | RETRY: {attempt+1} | DELAY: {delay:.2f}s")
                     stats["pending_requests"] -= 1
                     await asyncio.sleep(delay)
                     continue
                 
-                logging.info(f"URL: {url} | STATUS: {response.status_code} | BYTES: {len(response.content)} | TIME: {elapsed:.2f}s")
+                logger.info(f"URL: {url} | STATUS: {response.status_code} | BYTES: {len(response.content)} | TIME: {elapsed:.2f}s")
                 stats["pending_requests"] -= 1
                 return {"status": response.status_code, "content": response.content}
 
@@ -87,11 +90,11 @@ async def fetch(client: httpx.AsyncClient, url: str, stats: dict[str, int]) -> d
             stats["pending_requests"] -= 1
             if attempt < max_retries:
                 delay = base_delay * (2 ** attempt) + random.uniform(0, 1)
-                logging.warning(f"URL: {url} | STATUS: TIMEOUT/ERROR | RETRY: {attempt+1} | DELAY: {delay:.2f}s")
+                logger.warning(f"URL: {url} | STATUS: TIMEOUT/ERROR | RETRY: {attempt+1} | DELAY: {delay:.2f}s")
                 await asyncio.sleep(delay)
                 continue
             
-            logging.error(f"URL: {url} | STATUS: FAILED | TIME: {elapsed:.2f}s")
+            logger.error(f"URL: {url} | STATUS: FAILED | TIME: {elapsed:.2f}s")
             stats["errors"] += 1
             return {"status": "ERROR", "content": b""}
             
@@ -115,27 +118,26 @@ async def crawl_worker(
         if host not in host_sems:
             host_sems[host] = asyncio.Semaphore(1)
 
-        async with global_sem:
-            async with host_sems[host]:
-                if await robots.is_allowed(url):
-                    result = await fetch(client, url, stats)
-                    
-                    if isinstance(result["status"], int) and result["status"] == 200:
-                        content: bytes = result["content"]
-                        soup = BeautifulSoup(content.decode('utf-8', errors='ignore'), "html.parser")
-                        text = soup.get_text(separator=' ', strip=True)
-                        
-                        for a in soup.find_all("a", href=True):
-                            href = a['href']
-                            if isinstance(href, str):
-                                next_url = canonicalize_url(urllib.parse.urljoin(url, href))
-                                if next_url not in seen and next_url.startswith("http"):
-                                    seen.add(next_url)
-                                    await queue.put(next_url)
-                        
-                        await results_queue.put({"url": url, "text": text})
-                
-                await asyncio.sleep(1.0)
+        async with global_sem, host_sems[host]:
+            if await robots.is_allowed(url):
+                result = await fetch(client, url, stats)
+
+                if isinstance(result["status"], int) and result["status"] == 200:
+                    content: bytes = result["content"]
+                    soup = BeautifulSoup(content.decode('utf-8', errors='ignore'), "html.parser")
+                    text = soup.get_text(separator=' ', strip=True)
+
+                    for a in soup.find_all("a", href=True):
+                        href = a['href']
+                        if isinstance(href, str):
+                            next_url = canonicalize_url(urllib.parse.urljoin(url, href))
+                            if next_url not in seen and next_url.startswith("http"):
+                                seen.add(next_url)
+                                await queue.put(next_url)
+
+                    await results_queue.put({"url": url, "text": text})
+
+            await asyncio.sleep(1.0)
         
         queue.task_done()
         stats["active_tasks"] -= 1

@@ -1645,3 +1645,4 @@
 [2026-11-10 18:04:34] URL: https://books.toscrape.com/catalogue/keep-me-posted_594/index.html | STATUS: 200 | BYTES: 19756 | TIME: 0.41s
 [2026-11-10 18:04:35] HTTP Request: GET https://books.toscrape.com/catalogue/grey-fifty-shades-4_592/index.html "HTTP/1.1 200 OK"
 [2026-11-10 18:04:35] URL: https://books.toscrape.com/catalogue/grey-fifty-shades-4_592/index.html | STATUS: 200 | BYTES: 19290 | TIME: 0.31s
+[2026-11-12 14:33:12] Loaded index from index.pkl (1437 docs, 27942 terms)

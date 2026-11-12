@@ -1,12 +1,13 @@
+import json
 import pickle
 from collections import Counter, defaultdict
 from collections.abc import Generator, Iterator, Mapping
 from contextlib import contextmanager
 from functools import cached_property
 from pathlib import Path
-import json
 
 from findex.models import DocMeta, Posting
+
 
 def iter_documents(jsonl_path: str):
     """Генератор, який читає JSONL файл і повертає документи для індексації."""

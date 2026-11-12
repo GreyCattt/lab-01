@@ -54,12 +54,13 @@ def parse_query(query: str) -> QueryNode:
             raise ValueError(f"Неочікуваний токен: {tokens[pos] if pos < len(tokens) else 'кінець рядка'}")
         if match('('):
             node = parse_expr()
-            match(')')
+            if not match(')'):
+                raise ValueError("Незакрита дужка")
             return node
-            
+
         token = tokens[pos]
         pos += 1
-        
+
         if token.startswith('"') and token.endswith('"'):
             words = tuple(tokenize(token))
             return Phrase(words)
@@ -67,7 +68,10 @@ def parse_query(query: str) -> QueryNode:
             words = list(tokenize(token))
             return Term(words[0]) if words else Term(token)
 
-    return parse_expr()
+    result = parse_expr()
+    if pos < len(tokens):
+        raise ValueError(f"Неочікуваний токен: {tokens[pos]}")
+    return result
 
 
 class SearchEngine:

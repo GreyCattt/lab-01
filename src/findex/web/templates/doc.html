@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="uk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Документ #{{ doc.doc_id }} — Findex</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header>
+    <div>
+      <p class="eyebrow">Findex · Перегляд документа</p>
+      <h1>{{ doc.title }}</h1>
+      <p class="subtitle">ID: <code>#{{ doc.doc_id }}</code> · Шлях: <code>{{ doc.path }}</code></p>
+    </div>
+    <div style="display: flex; gap: 10px;">
+      <a class="pager-btn" href="/docs/{{ doc.doc_id }}" target="_blank" rel="noopener">{ } JSON API</a>
+      <a class="pager-btn" href="/{% if q %}?q={{ q|urlencode }}{% endif %}">← Назад до пошуку</a>
+    </div>
+  </header>
+
+  <main class="doc-viewer-full">
+    <div class="doc-content">{{ doc.content | highlight(query_words) }}</div>
+  </main>
+</body>
+</html>

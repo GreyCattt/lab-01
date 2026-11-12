@@ -1,0 +1,8 @@
+services:
+  - type: web
+    name: findex-lab-07
+    runtime: docker
+    healthCheckPath: /health
+    envVars:
+      - key: INDEX_PATH
+        value: /app/index.pkl
