@@ -39,3 +39,7 @@ jobs:
     # 3. Запускаємо всі тести (pytest + hypothesis)
     - name: Run Pytest
       run: uv run pytest -v
+
+    # 4. Запускаємо pytest-benchmark на build_index та search (Лаба 8)
+    - name: Run Benchmarks (search & build_index)
+      run: uv run pytest tests/test_lab8.py --benchmark-only

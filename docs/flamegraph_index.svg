@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 211" width="100%" height="211" style="background:#0f172a;font-family:Inter,system-ui,sans-serif">
+  <style>
+    .title { fill: #f8fafc; font-size: 18px; font-weight: 700; }
+    .sub { fill: #94a3b8; font-size: 12px; }
+    .frame rect { stroke: #0f172a; stroke-width: 1; rx: 3; transition: opacity 0.15s; cursor: pointer; }
+    .frame:hover rect { opacity: 0.85; stroke: #f8fafc; }
+    .frame text { fill: #0f172a; font-size: 11px; font-weight: 600; pointer-events: none; }
+  </style>
+  <text x="20" y="32" class="title">Flame Graph — findex index (build_partial, Lab 5 baseline)</text>
+  <text x="20" y="52" class="sub">1,437 chapters (2.82M tokens) · Hotspot: O(U*N) generator expression scanning tokens per unique term (82.4%)</text>
+  <g class="frame">
+    <title>build_partial (total: 100%) (100.0%)</title>
+    <rect x="20.0" y="153.0" width="1060.0" height="26" fill="#f97316" />
+    <text x="26.0" y="170.0">build_partial (total: 100%)</text>
+  </g>
+  <g class="frame">
+    <title>positions = tuple(pos for pos, t in enumerate(tokens) if t == term) (82.4%) (82.4%)</title>
+    <rect x="20.0" y="125.0" width="873.4" height="26" fill="#ef4444" />
+    <text x="26.0" y="142.0">positions = tuple(pos for pos, t in enumerate(tokens) if t == term) (82.4%)</text>
+  </g>
+  <g class="frame">
+    <title><genexpr> O(U * N) repeated token scan in Python (80.1%) (80.1%)</title>
+    <rect x="20.0" y="97.0" width="849.1" height="26" fill="#f87171" />
+    <text x="26.0" y="114.0"><genexpr> O(U * N) repeated token scan in Python (80.1%)</text>
+  </g>
+  <g class="frame">
+    <title>tokenize (re.finditer + unicodedata.normalize + casefold) (13.8%) (13.8%)</title>
+    <rect x="893.4" y="125.0" width="146.3" height="26" fill="#fbbf24" />
+    <text x="899.4" y="142.0">tokenize (re.findite..</text>
+  </g>
+  <g class="frame">
+    <title>re.finditer C engine (9.4%) (9.4%)</title>
+    <rect x="893.4" y="97.0" width="99.6" height="26" fill="#38bdf8" />
+    <text x="899.4" y="114.0">re.finditer C..</text>
+  </g>
+  <g class="frame">
+    <title>Path.read_text + Counter(tokens) (3.8%) (3.8%)</title>
+    <rect x="1039.7" y="125.0" width="40.3" height="26" fill="#4ade80" />
+  </g>
+</svg>

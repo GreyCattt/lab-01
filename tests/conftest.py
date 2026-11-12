@@ -1,6 +1,9 @@
-import pytest
 from pathlib import Path
+
+import pytest
+
 from findex.index import Index
+
 
 @pytest.fixture
 def sample_corpus(tmp_path: Path) -> Path:

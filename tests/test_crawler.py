@@ -1,7 +1,10 @@
-import pytest
-import httpx
 import time
+
+import httpx
+import pytest
+
 from findex.crawler import fetch
+
 
 async def mock_handler(request: httpx.Request):
     if "fail_once" in str(request.url):

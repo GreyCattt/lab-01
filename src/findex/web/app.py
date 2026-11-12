@@ -21,8 +21,11 @@ from markupsafe import Markup
 from pydantic import BaseModel, ConfigDict, Field
 
 from findex.index import Index, open_index
+from findex.models import SearchResult
 from findex.ranking import BM25Scorer, Scorer, TfIdfScorer
 from findex.search import SearchEngine, parse_query
+from findex.semantic import SemanticIndex, reciprocal_rank_fusion
+from findex.tokenize import tokenize
 
 logger = logging.getLogger("findex.web")
 WEB_DIR = Path(__file__).parent
@@ -30,6 +33,8 @@ TEMPLATES = Jinja2Templates(directory=str(WEB_DIR / "templates"))
 STATIC_DIR = WEB_DIR / "static"
 ANSI_ESCAPE_RE = re.compile(r"\x1b\[[0-9;]*m")
 DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+
+SearchMode = Literal["bm25", "tfidf", "semantic", "hybrid"]
 
 
 def _highlight_html(text: str, words: Iterable[str]) -> Markup:
@@ -53,6 +58,10 @@ def _default_index_path() -> Path:
     return Path(os.getenv("INDEX_PATH", "index.pkl"))
 
 
+def _default_embeddings_path() -> Path:
+    return Path(os.getenv("EMBEDDINGS_PATH", "embeddings.npy"))
+
+
 def _default_page_size() -> int:
     raw = os.getenv("PAGE_SIZE", "10")
     try:
@@ -67,6 +76,7 @@ class Settings(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     index_path: Path = Field(default_factory=_default_index_path)
+    embeddings_path: Path = Field(default_factory=_default_embeddings_path)
     page_size: int = Field(default_factory=_default_page_size, ge=1, le=100)
     log_level: str = Field(default_factory=lambda: os.getenv("LOG_LEVEL", "INFO"))
 
@@ -75,6 +85,7 @@ class Settings(BaseModel):
         return cls.model_validate(
             {
                 "index_path": os.getenv("INDEX_PATH", "index.pkl"),
+                "embeddings_path": os.getenv("EMBEDDINGS_PATH", "embeddings.npy"),
                 "page_size": os.getenv("PAGE_SIZE", "10"),
                 "log_level": os.getenv("LOG_LEVEL", "INFO"),
             }
@@ -93,7 +104,8 @@ class SearchItem(BaseModel):
 
 class SearchResponse(BaseModel):
     query: str
-    scorer: Literal["bm25", "tfidf"]
+    scorer: SearchMode
+    mode: SearchMode
     page: int
     page_size: int
     total: int
@@ -125,6 +137,7 @@ class HealthResponse(BaseModel):
 @dataclass(slots=True)
 class AppState:
     index: Index | None = None
+    semantic: SemanticIndex | None = None
     started_at: float = field(default_factory=time.monotonic)
 
 
@@ -192,22 +205,67 @@ def _snippet(engine: SearchEngine, index: Index, doc_id: int, query_words: set[s
     return f"... Документ {doc_name} ({meta.length} слів) ..."
 
 
+def _ensure_semantic_index(state: AppState, index: Index, settings: Settings) -> SemanticIndex:
+    if state.semantic is not None and state.semantic.num_docs == index.num_docs:
+        return state.semantic
+    if settings.embeddings_path.is_file():
+        try:
+            loaded = SemanticIndex.load(settings.embeddings_path)
+            if loaded.num_docs == index.num_docs:
+                state.semantic = loaded
+                return loaded
+        except Exception:
+            logger.exception("Could not load embeddings from %s", settings.embeddings_path)
+    state.semantic = SemanticIndex.from_inverted_index(index)
+    return state.semantic
+
+
 def _search(
     index: Index,
     query: str,
     k: int,
-    scorer_name: Literal["bm25", "tfidf"],
+    mode_name: SearchMode,
     page: int,
+    state: AppState | None = None,
+    settings: Settings | None = None,
 ) -> tuple[SearchResponse, set[str]]:
     t0 = time.perf_counter()
     if not query.strip():
         raise ValueError("Empty query")
-    scorer: Scorer = BM25Scorer(index) if scorer_name == "bm25" else TfIdfScorer(index)
+
+    scorer: Scorer = TfIdfScorer(index) if mode_name == "tfidf" else BM25Scorer(index)
     engine = SearchEngine(index, scorer)
-    ast = parse_query(query)
-    query_words = engine.extract_raw_words(ast)
     max_docs = max(index.num_docs, 1)
-    all_results = engine.search(query, top_k=max_docs)
+
+    all_results: list[SearchResult]
+    query_words: set[str]
+
+    if mode_name in ("bm25", "tfidf"):
+        ast = parse_query(query)
+        query_words = engine.extract_raw_words(ast)
+        all_results = engine.search(query, top_k=max_docs)
+    else:
+        query_words = set(tokenize(query))
+        if not query_words:
+            raise ValueError("Empty semantic query")
+        app_state = state or AppState(index=index)
+        app_settings = settings or Settings.from_env()
+        sem_index = _ensure_semantic_index(app_state, index, app_settings)
+        sem_results = sem_index.search(query, top_k=max_docs)
+        if mode_name == "semantic":
+            all_results = sem_results
+        else:
+            try:
+                bm25_results = engine.search(query, top_k=max_docs)
+            except ValueError:
+                or_query = " OR ".join(sorted(query_words))
+                bm25_results = engine.search(or_query, top_k=max_docs)
+            all_results = reciprocal_rank_fusion(
+                bm25_results,
+                sem_results,
+                top_k=max_docs,
+            )
+
     start = (page - 1) * k
     paged = all_results[start : start + k]
     total = len(all_results)
@@ -227,7 +285,8 @@ def _search(
     took_ms = round((time.perf_counter() - t0) * 1000.0, 3)
     response = SearchResponse(
         query=query,
-        scorer=scorer_name,
+        scorer=mode_name,
+        mode=mode_name,
         page=page,
         page_size=k,
         total=total,
@@ -259,6 +318,11 @@ async def lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
     try:
         with open_index(settings.index_path) as index:
             application.state.findex.index = index
+            if settings.embeddings_path.is_file():
+                try:
+                    application.state.findex.semantic = SemanticIndex.load(settings.embeddings_path)
+                except Exception:
+                    logger.exception("Could not load embeddings from %s", settings.embeddings_path)
             logger.info(
                 "Loaded index from %s (%d docs, %d terms)",
                 settings.index_path,
@@ -271,6 +335,7 @@ async def lifespan(application: FastAPI) -> AsyncGenerator[None, None]:
         yield
     finally:
         application.state.findex.index = None
+        application.state.findex.semantic = None
 
 
 def create_app(
@@ -279,7 +344,7 @@ def create_app(
     async_search: bool = False,
 ) -> FastAPI:
     runtime_settings = settings or Settings.from_env()
-    application = FastAPI(title="Findex", version="0.7.0", lifespan=lifespan)
+    application = FastAPI(title="Findex", version="1.0.0", lifespan=lifespan)
     application.state.settings = runtime_settings
     if STATIC_DIR.is_dir():
         application.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
@@ -305,23 +370,28 @@ def create_app(
     @application.get("/", response_class=HTMLResponse, include_in_schema=False)
     def home(
         request: Request,
-        q: str = Query(default="", max_length=500),
-        scorer: Literal["bm25", "tfidf"] = Query(default="bm25"),
+        q: Annotated[str, Query(max_length=500)] = "",
+        scorer: Annotated[SearchMode, Query()] = "bm25",
+        mode: Annotated[SearchMode | None, Query()] = None,
         k: Annotated[int | None, Query(ge=1, le=100)] = None,
-        page: int = Query(default=1, ge=1),
+        page: Annotated[int, Query(ge=1)] = 1,
         doc_id: Annotated[int | None, Query(ge=0)] = None,
         index: Index = Depends(get_index),  # noqa: B008
         app_settings: Settings = Depends(get_settings),  # noqa: B008
     ) -> Response:
+        effective_mode: SearchMode = mode if mode is not None else scorer
         page_size = k if k is not None else app_settings.page_size
         results: SearchResponse | None = None
         query_words: set[str] = set()
         error: str | None = None
         selected_doc: DocumentResponse | None = None
+        state: AppState = getattr(request.app.state, "findex", AppState(index=index))
 
         if q.strip():
             try:
-                results, query_words = _search(index, q, page_size, scorer, page)
+                results, query_words = _search(
+                    index, q, page_size, effective_mode, page, state=state, settings=app_settings
+                )
             except ValueError:
                 error = "Некоректний синтаксис запиту. Перевірте оператори AND, OR, NOT та дужки."
 
@@ -342,7 +412,8 @@ def create_app(
             name="index.html",
             context={
                 "q": q,
-                "scorer": scorer,
+                "scorer": effective_mode,
+                "mode": effective_mode,
                 "k": page_size,
                 "results": results,
                 "query_words": sorted(query_words),
@@ -370,7 +441,7 @@ def create_app(
                 engine = SearchEngine(index, BM25Scorer(index))
                 query_words = engine.extract_raw_words(parse_query(q))
             except ValueError:
-                query_words = set()
+                query_words = set(tokenize(q))
         doc = DocumentResponse(
             doc_id=doc_id,
             title=Path(path).name,
@@ -387,16 +458,22 @@ def create_app(
 
         @application.get("/search", response_model=SearchResponse)
         async def search_async(
+            request: Request,
             q: Annotated[str, Query(min_length=1, max_length=500)],
             k: Annotated[int | None, Query(ge=1, le=100)] = None,
-            scorer: Literal["bm25", "tfidf"] = "bm25",
+            scorer: SearchMode = "bm25",
+            mode: SearchMode | None = None,
             page: Annotated[int, Query(ge=1)] = 1,
             index: Index = Depends(get_index),  # noqa: B008
             app_settings: Settings = Depends(get_settings),  # noqa: B008
         ) -> SearchResponse:
+            effective_mode: SearchMode = mode if mode is not None else scorer
             page_size = k if k is not None else app_settings.page_size
+            state: AppState = getattr(request.app.state, "findex", AppState(index=index))
             try:
-                response, _ = _search(index, q, page_size, scorer, page)
+                response, _ = _search(
+                    index, q, page_size, effective_mode, page, state=state, settings=app_settings
+                )
                 return response
             except ValueError as exc:
                 raise HTTPException(status_code=422, detail="Invalid query syntax") from exc
@@ -405,16 +482,22 @@ def create_app(
 
         @application.get("/search", response_model=SearchResponse)
         def search(
+            request: Request,
             q: Annotated[str, Query(min_length=1, max_length=500)],
             k: Annotated[int | None, Query(ge=1, le=100)] = None,
-            scorer: Literal["bm25", "tfidf"] = "bm25",
+            scorer: SearchMode = "bm25",
+            mode: SearchMode | None = None,
             page: Annotated[int, Query(ge=1)] = 1,
             index: Index = Depends(get_index),  # noqa: B008
             app_settings: Settings = Depends(get_settings),  # noqa: B008
         ) -> SearchResponse:
+            effective_mode: SearchMode = mode if mode is not None else scorer
             page_size = k if k is not None else app_settings.page_size
+            state: AppState = getattr(request.app.state, "findex", AppState(index=index))
             try:
-                response, _ = _search(index, q, page_size, scorer, page)
+                response, _ = _search(
+                    index, q, page_size, effective_mode, page, state=state, settings=app_settings
+                )
                 return response
             except ValueError as exc:
                 raise HTTPException(status_code=422, detail="Invalid query syntax") from exc

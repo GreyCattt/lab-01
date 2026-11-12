@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 211" width="100%" height="211" style="background:#0f172a;font-family:Inter,system-ui,sans-serif">
+  <style>
+    .title { fill: #f8fafc; font-size: 18px; font-weight: 700; }
+    .sub { fill: #94a3b8; font-size: 12px; }
+    .frame rect { stroke: #0f172a; stroke-width: 1; rx: 3; transition: opacity 0.15s; cursor: pointer; }
+    .frame:hover rect { opacity: 0.85; stroke: #f8fafc; }
+    .frame text { fill: #0f172a; font-size: 11px; font-weight: 600; pointer-events: none; }
+  </style>
+  <text x="20" y="32" class="title">Flame Graph — findex search ('the AND of AND to', Lab 3 baseline)</text>
+  <text x="20" y="52" class="sub">Average latency: 85.09 ms per query (1,437 docs) · Hotspot: Python generator scan over Posting objects (74.6%)</text>
+  <g class="frame">
+    <title>SearchEngine.search (total: 100%) (100.0%)</title>
+    <rect x="20.0" y="153.0" width="1060.0" height="26" fill="#f97316" />
+    <text x="26.0" y="170.0">SearchEngine.search (total: 100%)</text>
+  </g>
+  <g class="frame">
+    <title>And.evaluate / set intersection (6.2%) (6.2%)</title>
+    <rect x="20.0" y="125.0" width="65.7" height="26" fill="#fb923c" />
+    <text x="26.0" y="142.0">And.eval..</text>
+  </g>
+  <g class="frame">
+    <title>Posting.doc_id generator scan: next(p.frequency for p in postings...) (74.6%) (74.6%)</title>
+    <rect x="85.7" y="125.0" width="790.8" height="26" fill="#ef4444" />
+    <text x="91.7" y="142.0">Posting.doc_id generator scan: next(p.frequency for p in postings...) (74.6%)</text>
+  </g>
+  <g class="frame">
+    <title><genexpr> linear scan in Python bytecode (71.8%) (71.8%)</title>
+    <rect x="85.7" y="97.0" width="761.1" height="26" fill="#f87171" />
+    <text x="91.7" y="114.0"><genexpr> linear scan in Python bytecode (71.8%)</text>
+  </g>
+  <g class="frame">
+    <title>BM25Scorer.score (16.4%) (16.4%)</title>
+    <rect x="876.5" y="125.0" width="173.8" height="26" fill="#fbbf24" />
+    <text x="882.5" y="142.0">BM25Scorer.score (16.4%)</text>
+  </g>
+  <g class="frame">
+    <title>math.log10 & float arithmetic (7.1%) (7.1%)</title>
+    <rect x="876.5" y="97.0" width="75.3" height="26" fill="#fde047" />
+    <text x="882.5" y="114.0">math.log1..</text>
+  </g>
+  <g class="frame">
+    <title>heapq.nlargest & SearchResult.__lt__ (2.8%) (2.8%)</title>
+    <rect x="1050.3" y="125.0" width="29.7" height="26" fill="#38bdf8" />
+  </g>
+</svg>

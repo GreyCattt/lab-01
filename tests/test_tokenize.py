@@ -1,5 +1,7 @@
 import pytest
+
 from findex.tokenize import tokenize
+
 
 @pytest.mark.parametrize(
     "text, expected",

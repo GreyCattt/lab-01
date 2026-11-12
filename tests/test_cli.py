@@ -1,5 +1,7 @@
 from pathlib import Path
+
 from typer.testing import CliRunner
+
 from findex.cli import app
 
 runner = CliRunner()

@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Findex — Повнотекстовий пошук</title>
+  <title>Findex v1.0.0 — Лексичний, Семантичний та Гібридний Пошук</title>
   <link rel="stylesheet" href="/static/styles.css">
   <script src="https://unpkg.com/htmx.org@1.9.12" defer></script>
 </head>
@@ -11,9 +11,9 @@
   <div id="search-area">
     <header>
       <div>
-        <p class="eyebrow">Findex · Lab 07 · FastAPI + Pydantic</p>
-        <h1>Повнотекстовий пошук</h1>
-        <p class="subtitle">Булеві оператори (<code>AND</code>, <code>OR</code>, <code>NOT</code>), фразовий пошук у лапках та ранжування BM25 / TF-IDF.</p>
+        <p class="eyebrow">Findex v1.0.0 · NumPy + RRF Hybrid Search</p>
+        <h1>Повнотекстовий та семантичний пошук</h1>
+        <p class="subtitle">Векторизоване ранжування NumPy (<code>BM25</code>, <code>TF-IDF</code>), векторний пошук (<code>Semantic</code>) та злиття рейтингів через <code>Reciprocal Rank Fusion (Hybrid)</code>.</p>
       </div>
       {% if stats %}
       <div class="stats-badges">
@@ -27,11 +27,13 @@
     <section class="search-card">
       <form method="get" action="/" hx-get="/" hx-target="#search-area" hx-swap="outerHTML" hx-push-url="true">
         <div class="input-wrap">
-          <input type="search" name="q" value="{{ q }}" placeholder="Наприклад: tarot AND club, &quot;the fool&quot;, klein OR audrey..." autofocus>
+          <input type="search" name="q" value="{{ q }}" placeholder="Наприклад: tarot AND club, fortune telling prophecy, crimson lunar..." autofocus>
         </div>
-        <select name="scorer" aria-label="Алгоритм ранжування">
-          <option value="bm25" {% if scorer == "bm25" %}selected{% endif %}>Ранжування: BM25</option>
-          <option value="tfidf" {% if scorer == "tfidf" %}selected{% endif %}>Ранжування: TF-IDF</option>
+        <select name="mode" aria-label="Режим пошуку">
+          <option value="bm25" {% if scorer == "bm25" %}selected{% endif %}>Режим: BM25 (NumPy)</option>
+          <option value="tfidf" {% if scorer == "tfidf" %}selected{% endif %}>Режим: TF-IDF (NumPy)</option>
+          <option value="semantic" {% if scorer == "semantic" %}selected{% endif %}>Режим: Semantic (Embeddings)</option>
+          <option value="hybrid" {% if scorer == "hybrid" %}selected{% endif %}>Режим: Hybrid (BM25 + Semantic RRF)</option>
         </select>
         <select name="k" aria-label="Результатів на сторінці">
           {% for size in [5, 10, 20, 50] %}
@@ -42,10 +44,10 @@
       </form>
       <div class="examples">
         <span>Приклади:</span>
-        <a class="chip" href="/?q=tarot&scorer={{ scorer }}&k={{ k }}" hx-get="/?q=tarot&scorer={{ scorer }}&k={{ k }}" hx-target="#search-area" hx-swap="outerHTML" hx-push-url="true">tarot</a>
-        <a class="chip" href="/?q=tarot+AND+club&scorer={{ scorer }}&k={{ k }}" hx-get="/?q=tarot+AND+club&scorer={{ scorer }}&k={{ k }}" hx-target="#search-area" hx-swap="outerHTML" hx-push-url="true">tarot AND club</a>
-        <a class="chip" href="/?q=%22the+fool%22&scorer={{ scorer }}&k={{ k }}" hx-get="/?q=%22the+fool%22&scorer={{ scorer }}&k={{ k }}" hx-target="#search-area" hx-swap="outerHTML" hx-push-url="true">"the fool"</a>
-        <a class="chip" href="/?q=klein+AND+NOT+audrey&scorer={{ scorer }}&k={{ k }}" hx-get="/?q=klein+AND+NOT+audrey&scorer={{ scorer }}&k={{ k }}" hx-target="#search-area" hx-swap="outerHTML" hx-push-url="true">klein AND NOT audrey</a>
+        <a class="chip" href="/?q=tarot+AND+club&mode=bm25&k={{ k }}" hx-get="/?q=tarot+AND+club&mode=bm25&k={{ k }}" hx-target="#search-area" hx-swap="outerHTML" hx-push-url="true">tarot AND club (BM25)</a>
+        <a class="chip" href="/?q=secret+society+council&mode=semantic&k={{ k }}" hx-get="/?q=secret+society+council&mode=semantic&k={{ k }}" hx-target="#search-area" hx-swap="outerHTML" hx-push-url="true">secret society council (Semantic)</a>
+        <a class="chip" href="/?q=fortune+telling+prophecy+clairvoyance&mode=hybrid&k={{ k }}" hx-get="/?q=fortune+telling+prophecy+clairvoyance&mode=hybrid&k={{ k }}" hx-target="#search-area" hx-swap="outerHTML" hx-push-url="true">fortune telling prophecy (Hybrid RRF)</a>
+        <a class="chip" href="/?q=handgun+ammunition+marksmanship&mode=semantic&k={{ k }}" hx-get="/?q=handgun+ammunition+marksmanship&mode=semantic&k={{ k }}" hx-target="#search-area" hx-swap="outerHTML" hx-push-url="true">handgun ammunition (Semantic)</a>
       </div>
     </section>
 
@@ -57,7 +59,7 @@
       <div>
         {% if results %}
           <div class="results-meta">
-            <span>Знайдено: <strong>{{ results.total }}</strong> ({{ results.scorer|upper }}, {{ "%.2f"|format(results.took_ms) }} ms)</span>
+            <span>Знайдено: <strong>{{ results.total }}</strong> ({{ results.mode|upper }}, {{ "%.2f"|format(results.took_ms) }} ms)</span>
             <span>Сторінка <strong>{{ results.page }}</strong> із <strong>{{ results.pages or 1 }}</strong></span>
           </div>
 
@@ -66,8 +68,8 @@
               <article class="result-card">
                 <div class="result-head">
                   <h2 class="result-title">
-                    <a href="/?q={{ q|urlencode }}&scorer={{ scorer }}&k={{ k }}&page={{ results.page }}&doc_id={{ item.doc_id }}"
-                       hx-get="/?q={{ q|urlencode }}&scorer={{ scorer }}&k={{ k }}&page={{ results.page }}&doc_id={{ item.doc_id }}"
+                    <a href="/?q={{ q|urlencode }}&mode={{ scorer }}&k={{ k }}&page={{ results.page }}&doc_id={{ item.doc_id }}"
+                       hx-get="/?q={{ q|urlencode }}&mode={{ scorer }}&k={{ k }}&page={{ results.page }}&doc_id={{ item.doc_id }}"
                        hx-target="#search-area" hx-swap="outerHTML" hx-push-url="true">
                       #{{ item.doc_id }} · {{ item.title }}
                     </a>
@@ -76,8 +78,8 @@
                 </div>
                 <p class="snippet">{{ item.snippet | highlight(query_words) }}</p>
                 <div class="result-actions">
-                  <a href="/?q={{ q|urlencode }}&scorer={{ scorer }}&k={{ k }}&page={{ results.page }}&doc_id={{ item.doc_id }}"
-                     hx-get="/?q={{ q|urlencode }}&scorer={{ scorer }}&k={{ k }}&page={{ results.page }}&doc_id={{ item.doc_id }}"
+                  <a href="/?q={{ q|urlencode }}&mode={{ scorer }}&k={{ k }}&page={{ results.page }}&doc_id={{ item.doc_id }}"
+                     hx-get="/?q={{ q|urlencode }}&mode={{ scorer }}&k={{ k }}&page={{ results.page }}&doc_id={{ item.doc_id }}"
                      hx-target="#search-area" hx-swap="outerHTML" hx-push-url="true">📖 Швидкий перегляд</a>
                   <a href="/doc/{{ item.doc_id }}?q={{ q|urlencode }}">📄 Сторінка документа (/doc/{{ item.doc_id }})</a>
                   <a href="/docs/{{ item.doc_id }}" target="_blank" rel="noopener">{ } JSON API (/docs/{{ item.doc_id }})</a>
@@ -89,8 +91,8 @@
               <div>
                 {% if results.page > 1 %}
                   <a class="pager-btn"
-                     href="/?q={{ q|urlencode }}&scorer={{ scorer }}&k={{ k }}&page={{ results.page - 1 }}"
-                     hx-get="/?q={{ q|urlencode }}&scorer={{ scorer }}&k={{ k }}&page={{ results.page - 1 }}"
+                     href="/?q={{ q|urlencode }}&mode={{ scorer }}&k={{ k }}&page={{ results.page - 1 }}"
+                     hx-get="/?q={{ q|urlencode }}&mode={{ scorer }}&k={{ k }}&page={{ results.page - 1 }}"
                      hx-target="#search-area" hx-swap="outerHTML" hx-push-url="true">← Попередня</a>
                 {% endif %}
               </div>
@@ -98,20 +100,20 @@
               <div>
                 {% if results.page < results.pages %}
                   <a class="pager-btn"
-                     href="/?q={{ q|urlencode }}&scorer={{ scorer }}&k={{ k }}&page={{ results.page + 1 }}"
-                     hx-get="/?q={{ q|urlencode }}&scorer={{ scorer }}&k={{ k }}&page={{ results.page + 1 }}"
+                     href="/?q={{ q|urlencode }}&mode={{ scorer }}&k={{ k }}&page={{ results.page + 1 }}"
+                     hx-get="/?q={{ q|urlencode }}&mode={{ scorer }}&k={{ k }}&page={{ results.page + 1 }}"
                      hx-target="#search-area" hx-swap="outerHTML" hx-push-url="true">Наступна →</a>
                 {% endif %}
               </div>
             </nav>
           {% else %}
             <div class="empty-state">
-              За запитом <strong>«{{ q }}»</strong> нічого не знайдено. Спробуйте інші ключові слова.
+              За запитом <strong>«{{ q }}»</strong> нічого не знайдено. Спробуйте режим <code>Semantic</code> або <code>Hybrid</code>.
             </div>
           {% endif %}
         {% elif not selected_doc %}
           <div class="empty-state">
-            Введіть пошуковий запит вище або натисніть на один із прикладів, щоб розпочати пошук по корпусу.
+            Введіть пошуковий запит вище або натисніть на один із прикладів, щоб порівняти BM25, Semantic та Hybrid RRF пошук.
           </div>
         {% endif %}
       </div>
@@ -127,8 +129,8 @@
               <a class="pager-btn" href="/doc/{{ selected_doc.doc_id }}?q={{ q|urlencode }}">Повністю</a>
               <a class="pager-btn" href="/docs/{{ selected_doc.doc_id }}" target="_blank" rel="noopener">JSON</a>
               <a class="pager-btn"
-                 href="/?q={{ q|urlencode }}&scorer={{ scorer }}&k={{ k }}&page={{ results.page if results else 1 }}"
-                 hx-get="/?q={{ q|urlencode }}&scorer={{ scorer }}&k={{ k }}&page={{ results.page if results else 1 }}"
+                 href="/?q={{ q|urlencode }}&mode={{ scorer }}&k={{ k }}&page={{ results.page if results else 1 }}"
+                 hx-get="/?q={{ q|urlencode }}&mode={{ scorer }}&k={{ k }}&page={{ results.page if results else 1 }}"
                  hx-target="#search-area" hx-swap="outerHTML" hx-push-url="true">✕ Закрити</a>
             </div>
           </div>

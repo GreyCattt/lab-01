@@ -1,5 +1,7 @@
 from pathlib import Path
+
 from findex.index import Index, build_partial
+
 
 def test_build_partial_and_merge_equivalence(tmp_path: Path):
     """Доводить, що нова архітектура генерує ідентичний індекс."""

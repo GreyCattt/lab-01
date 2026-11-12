@@ -1,5 +1,6 @@
-from findex.ast import Term, Phrase, And, Or, Not
+from findex.ast import And, Not, Or, Phrase, Term
 from findex.search import parse_query
+
 
 def test_parse_single_term():
     assert parse_query("hello") == Term("hello")

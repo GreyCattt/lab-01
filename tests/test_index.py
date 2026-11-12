@@ -1,5 +1,7 @@
-from findex.index import Index
 import tempfile
+
+from findex.index import Index
+
 
 def test_index_num_docs(sample_index: Index):
     """Перевіряє, чи правильно пораховано кількість документів."""
@@ -28,7 +30,9 @@ def test_index_avg_doc_length(sample_index: Index):
     assert sample_index.avg_doc_length == 4.5
 
 from pathlib import Path
-from hypothesis import given, strategies as st
+
+from hypothesis import given
+from hypothesis import strategies as st
 
 # --- Hypothesis Property-Based Тести ---
 
@@ -50,7 +54,7 @@ def test_postings_are_always_sorted(random_text: str):
         idx = Index()
         idx.build(doc_dir)
         
-        for _, postings in idx.items():
+        for postings in idx.values():
             doc_ids = [p.doc_id for p in postings]
             assert doc_ids == sorted(doc_ids)
 
