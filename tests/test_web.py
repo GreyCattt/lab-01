@@ -12,6 +12,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from findex.index import Index
+from findex.models import DocMeta
 from findex.web.app import Settings, create_app, get_index
 
 
@@ -139,6 +140,22 @@ def test_home_page_renders_highlighted_snippets_and_doc_viewer(tmp_path: Path) -
     assert response.status_code == 200
     assert "<mark>tarot</mark>" in response.text.lower()
     assert "Документ #0" in response.text
+
+
+def test_search_snippet_fallback_uses_filename_for_windows_style_path(tmp_path: Path) -> None:
+    application, index = _make_app(tmp_path)
+    meta = index.get_meta(0)
+    index._metadata[0] = DocMeta(doc_id=meta.doc_id, length=meta.length, path="nested\\doc0.txt")  # type: ignore[attr-defined]
+    (tmp_path / "doc0.txt").unlink()
+
+    with TestClient(application) as raw_client:
+        client = cast(httpx.Client, raw_client)
+        response = client.get("/search", params={"q": "club", "k": 5, "scorer": "bm25"})
+
+    assert response.status_code == 200
+    body: dict[str, Any] = response.json()
+    assert body["results"]
+    assert "doc0.txt" in body["results"][0]["snippet"]
 
 
 def test_20_concurrent_search_requests_def_vs_async_def(tmp_path: Path) -> None:
