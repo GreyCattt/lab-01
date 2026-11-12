@@ -10,12 +10,6 @@ from urllib.robotparser import RobotFileParser
 import httpx
 from bs4 import BeautifulSoup
 
-logging.basicConfig(
-    filename='crawl.log',
-    level=logging.INFO,
-    format='[%(asctime)s] %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
 logger = logging.getLogger("findex.crawler")
 
 def canonicalize_url(url: str) -> str:
@@ -149,7 +143,17 @@ async def crawl(
     concurrency: int, 
     stats: dict[str, int]
 ) -> AsyncGenerator[dict[str, str], None]:
-    
+    if not logger.handlers:
+        try:
+            handler = logging.FileHandler("crawl.log", encoding="utf-8")
+            handler.setFormatter(
+                logging.Formatter("[%(asctime)s] %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+            )
+            logger.addHandler(handler)
+            logger.setLevel(logging.INFO)
+        except OSError:
+            pass
+
     queue: asyncio.Queue[str] = asyncio.Queue()
     results_queue: asyncio.Queue[dict[str, str]] = asyncio.Queue()
     seen: set[str] = set()
